@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+
+{% block title %}Global Risk Dashboard - GEMS{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-4">
+        <select id="bta-category" class="form-select">
+            <option value="avg">Average</option>
+            <option value="Crime">Crime</option>
+            <option value="Civil Unrest">Civil Unrest</option>
+            <option value="Regional Conflict">Regional Conflict</option>
+            <option value="Terrorism">Terrorism</option>
+            <option value="Activism">Activism</option>
+            <option value="Cyber">Cyber</option>
+            <option value="Insider">Insider</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <select id="country-select" class="form-select">
+            <option value="">Select Country</option>
+            <!-- Options will be populated dynamically -->
+        </select>
+    </div>
+    <div class="col-md-4">
+        <select id="asset-select" class="form-select">
+            <option value="">Select Asset</option>
+            <!-- Options will be populated dynamically -->
+        </select>
+    </div>
+</div>
+<div class="row">
+    <!-- Main content area -->
+    <div class="col-md-9 px-md-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Global Risk Map</h5>
+                        <div id="world-map" style="height: 500px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            Risk Severity Distribution
+                            <span class="tooltip">
+                                <i class="fas fa-info-circle info-icon"></i>
+                                <span class="tooltiptext">This chart shows the distribution of risk severity across different categories for the selected country or globally.</span>
+                            </span>
+                        </h5>
+                        <div id="risk-overview-chart"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Asset Distribution</h5>
+                        <div id="asset-distribution-chart"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Assets Overview</h5>
+                        <table id="assets-table" class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Country</th>
+                                    <th>Criticality Score</th>
+                                    <th>Vulnerability Score</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table body will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-md-3 d-md-block sidebar">
+        <div class="position-sticky">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Country Details</h5>
+                    <div id="country-details" class="details-container">
+                        <p>Select a country to view details.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Asset Details</h5>
+                    <div id="asset-details" class="details-container">
+                        <p>Select an asset to view details.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script id="company-operated-countries" type="application/json">{{ countries|safe }}</script>
+<script id="assets" type="application/json">{{ assets|safe }}</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Dynamic data from Django
+    var companyOperatedCountries = JSON.parse(document.getElementById('company-operated-countries').textContent);
+    var assets = JSON.parse(document.getElementById('assets').textContent);
+
+    console.log('Company Operated Countries:', companyOperatedCountries);
+    console.log('Assets:', assets);
+
+    // Initialize the map
+    var map = L.map('world-map').setView([0, 0], 2);
+    var lightTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    });
+    var darkTileLayer = L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors, © CARTO'
+    });
+
+    lightTileLayer.addTo(map);
+
+    // Function to color countries based on BTA score (for the map)
+    function getColor(score) {
+        return score > 8 ? '#8B0000' :   // Severe - Dark Red
+               score > 6 ? '#FF4500' :   // High - Orange Red
+               score > 4 ? '#FFA500' :   // Substantial - Orange
+               score > 2 ? '#1E90FF' :   // Moderate - Dodger Blue
+                           '#32CD32';    // Low - Lime Green
+    }
+
+    // Custom green dot icon for asset markers
+    var greenDotIcon = L.divIcon({
+        className: 'custom-green-dot',
+        iconSize: [10, 10]
+    });
+
+    // Object to store country layers
+    var countryLayers = {};
+
+    // Function to update map colors based on selected BTA category
+    function updateMapColors(category) {
+        companyOperatedCountries.forEach(function(country) {
+            if (countryLayers[country.name]) {
+                var score = category === 'avg' ? country.avg_bta_score : 
+                    (country.bta_scores.find(s => s.risk_group === category) || {}).bta_score || 0;
+                
+                countryLayers[country.name].setStyle({
+                    fillColor: getColor(score),
+                    fillOpacity: 0.7
+                });
+            }
+        });
+        updateRiskSeverityDistribution(category);
+    }
+
+    // Add GeoJSON data to the map
+    companyOperatedCountries.forEach(function(country) {
+        if (country.geo_data) {
+            var layer = L.geoJSON(country.geo_data, {
+                style: function(feature) {
+                    return {
+                        fillColor: getColor(country.avg_bta_score),
+                        weight: 2,
+                        opacity: 1,
+                        color: 'white',
+                        dashArray: '3',
+                        fillOpacity: 0.7
+                    };
+                }
+            }).addTo(map);
+            
+            layer.bindPopup(country.name);
+            layer.on('click', function() {
+                updateCountryDetails(country);
+                document.getElementById('country-select').value = country.name;
+                zoomToFeature(layer);
+            });
+
+            // Store the layer reference
+            countryLayers[country.name] = layer;
+        }
+    });
+
+    // Add asset markers to the map
+    assets.forEach(function(asset) {
+        var marker = L.marker([asset.latitude, asset.longitude], {icon: greenDotIcon})
+            .addTo(map)
+            .bindPopup(asset.name + '<br>Type: ' + asset.asset_type);
+        
+        marker.on('click', function() {
+            updateAssetDetails(asset);
+            updateCountryDetails(asset.country);
+            document.getElementById('asset-select').value = asset.name;
+            document.getElementById('country-select').value = asset.country.name;
+            map.setView([asset.latitude, asset.longitude], 6);
+        });
+    });
+
+    // Function to zoom to a feature
+    function zoomToFeature(layer) {
+        map.fitBounds(layer.getBounds());
+    }
+
+    // Populate country dropdown
+    var countrySelect = document.getElementById('country-select');
+    companyOperatedCountries.forEach(function(country) {
+        var option = document.createElement('option');
+        option.value = country.name;
+        option.textContent = country.name;
+        countrySelect.appendChild(option);
+    });
+
+    // Populate asset dropdown
+    var assetSelect = document.getElementById('asset-select');
+    assets.forEach(function(asset) {
+        var option = document.createElement('option');
+        option.value = asset.name;
+        option.textContent = asset.name;
+        assetSelect.appendChild(option);
+    });
+
+    // Event listener for BTA category dropdown
+    var btaCategorySelect = document.getElementById('bta-category');
+    btaCategorySelect.addEventListener('change', function() {
+        updateMapColors(this.value);
+    });
+
+    // Event listeners for dropdowns
+    countrySelect.addEventListener('change', function() {
+        var selectedCountry = companyOperatedCountries.find(c => c.name === this.value);
+        if (selectedCountry) {
+            updateCountryDetails(selectedCountry);
+            if (countryLayers[selectedCountry.name]) {
+                zoomToFeature(countryLayers[selectedCountry.name]);
+            }
+        }
+    });
+
+    assetSelect.addEventListener('change', function() {
+        var selectedAsset = assets.find(a => a.name === this.value);
+        if (selectedAsset) {
+            updateAssetDetails(selectedAsset);
+            updateCountryDetails(selectedAsset.country);
+            document.getElementById('country-select').value = selectedAsset.country.name;
+            map.setView([selectedAsset.latitude, selectedAsset.longitude], 6);
+        }
+    });
+
+    // Function to update country details
+    function updateCountryDetails(country) {
+        var detailsHtml = `
+            <h5 class="mb-3">${country.name}</h5>
+            <div class="mb-3">
+                <strong>Average BTA Score:</strong> 
+                <span class="badge bg-${getBadgeClass(country.avg_bta_score)}">${country.avg_bta_score.toFixed(2)}</span>
+            </div>
+            <h6 class="mb-2">BTA Scores by Risk Type:</h6>
+            <ul class="list-group">
+                ${country.bta_scores.map(score => `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        ${score.risk_group}
+                        <span class="badge bg-${getBadgeClass(score.bta_score)} rounded-pill">${score.bta_score}</span>
+                    </li>
+                `).join('')}
+            </ul>
+        `;
+        document.getElementById('country-details').innerHTML = detailsHtml;
+    }
+
+    // Function to update asset details
+    function updateAssetDetails(asset) {
+        var detailsHtml = `
+            <h5 class="mb-3">${asset.name}</h5>
+            <ul class="list-group mb-3">
+                <li class="list-group-item"><strong>Type:</strong> ${asset.asset_type}</li>
+                <li class="list-group-item"><strong>Country:</strong> ${asset.country.name}</li>
+                <li class="list-group-item">
+                    <strong>Criticality Score:</strong> 
+                    <span class="badge bg-${getBadgeClass(asset.criticality_score)}">${asset.criticality_score}</span>
+                </li>
+                <li class="list-group-item">
+                    <strong>Vulnerability Score:</strong> 
+                    <span class="badge bg-${getBadgeClass(asset.vulnerability_score)}">${asset.vulnerability_score}</span>
+                </li>
+            </ul>
+        `;
+        document.getElementById('asset-details').innerHTML = detailsHtml;
+    }
+
+    // Function to get Bootstrap badge class based on score
+    function getBadgeClass(score) {
+        if (score > 8) return 'danger';
+        if (score > 6) return 'warning';
+        if (score > 4) return 'info';
+        if (score > 2) return 'primary';
+        return 'success';
+    }
+
+    // Custom legend control (for the map)
+    var legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function(map) {
+        var div = L.DomUtil.create('div', 'info legend');
+        var riskLevels = ['Severe', 'High', 'Substantial', 'Moderate', 'Low'];
+        var colors = ['#8B0000', '#FF4500', '#FFA500', '#1E90FF', '#32CD32'];
+
+        div.innerHTML = '<h6>Risk Levels</h6>';
+        for (var i = 0; i < riskLevels.length; i++) {
+            div.innerHTML +=
+                '<i style="background:' + colors[i] + '; width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.7;"></i> ' +
+                riskLevels[i] + '<br>';
+        }
+        return div;
+    };
+    legend.addTo(map);
+
+    // Function to update Risk Severity Distribution chart
+    function updateRiskSeverityDistribution(category) {
+        let severityData = {
+            'Low': 0,
+            'Moderate': 0,
+            'Substantial': 0,
+            'High': 0,
+            'Severe': 0
+        };
+
+        companyOperatedCountries.forEach(country => {
+            let score;
+            if (category === 'avg') {
+                score = country.avg_bta_score;
+            } else {
+                let riskScore = country.bta_scores.find(s => s.risk_group === category);
+                score = riskScore ? riskScore.bta_score : 0;
+            }
+
+            if (score <= 2) severityData['Low']++;
+            else if (score <= 4) severityData['Moderate']++;
+            else if (score <= 6) severityData['Substantial']++;
+            else if (score <= 8) severityData['High']++;
+            else severityData['Severe']++;
+        });
+
+        let options = {
+            series: [{
+                data: Object.values(severityData)
+            }],
+            chart: {
+                type: 'bar',
+                height: 350
+            },
+            plotOptions: {
+                bar: {
+                    borderRadius: 4,
+                    horizontal: true,
+                }
+            },
+            dataLabels: {
+                enabled: false
+            },
+            xaxis: {
+                categories: Object.keys(severityData),
+            },
+            title: {
+                text: 'Risk Severity Distribution',
+                align: 'center'
+            }
+        };
+
+        let chart = new ApexCharts(document.querySelector("#risk-overview-chart"), options);
+        chart.render();
+    }
+
+    // Function to create Asset Distribution chart
+    function createAssetDistributionChart() {
+        let assetTypes = {};
+        assets.forEach(asset => {
+            if (assetTypes[asset.asset_type]) {
+                assetTypes[asset.asset_type]++;
+            } else {
+                assetTypes[asset.asset_type] = 1;
+            }
+        });
+
+        let options = {
+            series: Object.values(assetTypes),
+            chart: {
+                type: 'pie',
+                height: 350
+            },
+            labels: Object.keys(assetTypes),
+            title: {
+                text: 'Asset Distribution by Type',
+                align: 'center'
+            }
+        };
+
+        let chart = new ApexCharts(document.querySelector("#asset-distribution-chart"), options);
+        chart.render();
+    }
+
+    // Function to populate Assets Overview table
+    function populateAssetsTable() {
+        let table = $('#assets-table').DataTable({
+            data: assets,
+            columns: [
+                { data: 'name' },
+                { data: 'asset_type' },
+                { data: 'country.name' },
+                { 
+                    data: 'criticality_score',
+                    render: function(data) {
+                        return `<span class="badge bg-${getBadgeClass(data)}">${data}</span>`;
+                    }
+                },
+                { 
+                    data: 'vulnerability_score',
+                    render: function(data) {
+                        return `<span class="badge bg-${getBadgeClass(data)}">${data}</span>`;
+                    }
+                }
+            ],
+            pageLength: 10,
+            lengthChange: false
+        });
+    }
+
+    // Call functions to create charts and populate table
+    updateRiskSeverityDistribution('avg');
+    createAssetDistributionChart();
+    populateAssetsTable();
+});
+</script>
+<script id="company-operated-countries" type="application/json">{{ countries|safe }}</script>
+<script id="assets" type="application/json">{{ assets|safe }}</script>
+
+{% endblock %}

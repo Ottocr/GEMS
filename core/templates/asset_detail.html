@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}{{ asset.name }} - GEMS{% endblock %}
+
+{% block extra_css %}
+<style>
+    #asset-map {
+        height: 300px;
+        width: 100%;
+    }
+    .tab-content {
+        padding: 20px;
+        background-color: var(--card-bg);
+        border-radius: 0 0 15px 15px;
+    }
+    .risk-pipeline {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+    }
+    .risk-stage {
+        text-align: center;
+        padding: 10px;
+        background-color: var(--card-bg);
+        border-radius: 5px;
+    }
+    .risk-matrix {
+        width: 100%;
+        height: 300px;
+        background-color: var(--card-bg);
+        border-radius: 5px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">{{ asset.name }}</h1>
+
+    <ul class="nav nav-tabs" id="assetTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview" aria-selected="true">Overview</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="risk-assessment-tab" data-bs-toggle="tab" data-bs-target="#risk-assessment" type="button" role="tab" aria-controls="risk-assessment" aria-selected="false">Risk Assessment</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="actions-tab" data-bs-toggle="tab" data-bs-target="#actions" type="button" role="tab" aria-controls="actions" aria-selected="false">Actions/Recommendations</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="incidents-tab" data-bs-toggle="tab" data-bs-target="#incidents" type="button" role="tab" aria-controls="incidents" aria-selected="false">Incidents</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="barriers-tab" data-bs-toggle="tab" data-bs-target="#barriers" type="button" role="tab" aria-controls="barriers" aria-selected="false">Barriers</button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="assetTabsContent">
+        <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+            <div class="row">
+                <div class="col-md-6">
+                    <div id="asset-map"></div>
+                </div>
+                <div class="col-md-6">
+                    <h3>Asset Details</h3>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Type
+                            <span>{{ asset.asset_type }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Country
+                            <span>{{ asset.country.name }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Latitude
+                            <span>{{ asset.latitude }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Longitude
+                            <span>{{ asset.longitude }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Criticality Score
+                            <span>{{ asset.criticality_score }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Vulnerability Score
+                            <span>{{ asset.vulnerability_score }}</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="risk-assessment" role="tabpanel" aria-labelledby="risk-assessment-tab">
+            <h3>Risk Assessment Process</h3>
+            <div class="risk-pipeline">
+                <div class="risk-stage">Criticality</div>
+                <div class="risk-stage">Vulnerability</div>
+                <div class="risk-stage">Threat</div>
+                <div class="risk-stage">Final Assessment</div>
+            </div>
+            <h4>Scenario Answers</h4>
+            <form>
+                {% for scenario in asset.scenarios.all %}
+                <div class="mb-3">
+                    <label for="scenario{{ scenario.id }}" class="form-label">{{ scenario.question }}</label>
+                    <input type="text" class="form-control" id="scenario{{ scenario.id }}" value="{{ scenario.answer }}">
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-primary">Update Answers</button>
+            </form>
+            <h4 class="mt-4">Final Asset Risk Matrix</h4>
+            <div class="risk-matrix">
+                <!-- Placeholder for risk matrix visualization -->
+                <p>Risk Matrix Visualization Goes Here</p>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="actions" role="tabpanel" aria-labelledby="actions-tab">
+            <h3>Actions and Recommendations</h3>
+            <p>Content for Actions/Recommendations tab to be implemented later.</p>
+        </div>
+        <div class="tab-pane fade" id="incidents" role="tabpanel" aria-labelledby="incidents-tab">
+            <h3>Incidents</h3>
+            <p>Content for Incidents tab to be implemented later.</p>
+        </div>
+        <div class="tab-pane fade" id="barriers" role="tabpanel" aria-labelledby="barriers-tab">
+            <h3>Barriers</h3>
+            <p>Content for Barriers tab to be implemented later.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        var map = L.map('asset-map').setView([{{ asset.latitude }}, {{ asset.longitude }}], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        L.marker([{{ asset.latitude }}, {{ asset.longitude }}])
+            .addTo(map)
+            .bindPopup("<b>{{ asset.name }}</b><br>Type: {{ asset.asset_type }}");
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Security Manager Dashboard - GEMS{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2>Security Manager Dashboard</h2>
+    <!-- Tabs Navigation -->
+    <ul class="nav nav-tabs" id="smTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="country-tab" data-bs-toggle="tab" href="#country" role="tab" aria-controls="country" aria-selected="true">Country Details</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="assets-tab" data-bs-toggle="tab" href="#assets" role="tab" aria-controls="assets" aria-selected="false">Manage Assets</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="bta-tab" data-bs-toggle="tab" href="#bta" role="tab" aria-controls="bta" aria-selected="false">Edit BTAs</a>
+        </li>
+    </ul>
+
+
+    <div class="mb-3">
+        <label for="countrySelect" class="form-label">Select Country</label>
+        <select class="form-select" id="countrySelect" name="country_id">
+            <option value="">-- Select a Country --</option>
+            {% for c in countries %}
+            <option value="{{ c.id }}" {% if country and country.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <!-- Tabs Content -->
+    <div class="tab-content" id="smTabsContent">
+        <!-- Country Details Tab -->
+        <div class="tab-pane fade show active" id="country" role="tabpanel" aria-labelledby="country-tab">
+            <h3 class="mt-4">Edit Country Details</h3>
+            <form id="country-form">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="countryName" class="form-label">Country Name</label>
+                    <input type="text" class="form-control" id="countryName" name="name" value="{{ country.name }}">
+                </div>
+                <div class="mb-3">
+                    <label for="countryCode" class="form-label">Country Code</label>
+                    <input type="text" class="form-control" id="countryCode" name="code" value="{{ country.code }}">
+                </div>
+                <div class="mb-3">
+                    <label for="companyOperated" class="form-label">Company Operated</label>
+                    <select class="form-select" id="companyOperated" name="company_operated">
+                        <option value="True" {% if country.company_operated %}selected{% endif %}>Yes</option>
+                        <option value="False" {% if not country.company_operated %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div id="country-map" style="height: 400px;"></div>
+                <input type="hidden" id="countryGeoData" name="geo_data" value='{{ country.geo_data|safe }}'>
+                <button type="submit" class="btn btn-primary mt-3">Save Country Details</button>
+            </form>
+        </div>
+
+        <!-- Manage Assets Tab -->
+        <div class="tab-pane fade" id="assets" role="tabpanel" aria-labelledby="assets-tab">
+            <h3 class="mt-4">Manage Assets</h3>
+            <!-- Assets Table -->
+            <table id="assets-table" class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Latitude</th>
+                        <th>Longitude</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for asset in assets %}
+                    <tr data-asset-id="{{ asset.id }}">
+                        <td>{{ asset.name }}</td>
+                        <td>{{ asset.asset_type.name }}</td>
+                        <td>{{ asset.latitude }}</td>
+                        <td>{{ asset.longitude }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary edit-asset-btn">Edit</button>
+                            <button class="btn btn-sm btn-danger delete-asset-btn">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <!-- Add Asset Button -->
+            <button class="btn btn-success mb-3" id="add-asset-btn">Add New Asset</button>
+
+            <!-- Asset Form Modal -->
+            <div class="modal fade" id="assetModal" tabindex="-1" aria-labelledby="assetModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <form id="asset-form">
+                            {% csrf_token %}
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="assetModalLabel">Add/Edit Asset</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <!-- Asset Form Fields -->
+                                <input type="hidden" id="assetId" name="asset_id">
+                                <div class="mb-3">
+                                    <label for="assetName" class="form-label">Asset Name</label>
+                                    <input type="text" class="form-control" id="assetName" name="name" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="assetType" class="form-label">Asset Type</label>
+                                    <select class="form-select" id="assetType" name="asset_type" required>
+                                        {% for atype in asset_types %}
+                                        <option value="{{ atype.id }}">{{ atype.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="assetDescription" class="form-label">Description</label>
+                                    <textarea class="form-control" id="assetDescription" name="description"></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Location</label>
+                                    <div id="asset-map" style="height: 400px;"></div>
+                                    <input type="hidden" id="assetLatitude" name="latitude">
+                                    <input type="hidden" id="assetLongitude" name="longitude">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="assetScenarios" class="form-label">Scenarios</label>
+                                    <select class="form-select" id="assetScenarios" name="scenarios" multiple>
+                                        {% for scenario in scenarios %}
+                                        <option value="{{ scenario.id }}">{{ scenario.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="assetBarriers" class="form-label">Barriers</label>
+                                    <select class="form-select" id="assetBarriers" name="barriers" multiple>
+                                        {% for barrier in barriers %}
+                                        <option value="{{ barrier.id }}">{{ barrier.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="submit" class="btn btn-primary">Save Asset</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit BTAs Tab -->
+        <div class="tab-pane fade" id="bta" role="tabpanel" aria-labelledby="bta-tab">
+            <h3 class="mt-4">Edit Baseline Threat Assessments</h3>
+            <form id="bta-form">
+                {% csrf_token %}
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Risk Type</th>
+                            <th>Baseline Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bta in bta_list %}
+                        <tr>
+                            <td>{{ bta.risk_type.name }}</td>
+                            <td>
+                                <input type="number" class="form-control" name="bta_{{ bta.id }}" value="{{ bta.baseline_score }}" min="1" max="10">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button type="submit" class="btn btn-primary mt-3">Save BTAs</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script>
+// Save Country Details
+document.getElementById('country-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var formData = new FormData(this);
+    fetch('{% url "save_country_details" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Country details saved successfully.');
+        } else {
+            alert('Failed to save country details.');
+        }
+    });
+});
+
+// Save Asset
+document.getElementById('asset-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var formData = new FormData(this);
+    fetch('{% url "save_asset" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Asset saved successfully.');
+            // Refresh the assets table
+            location.reload();
+        } else {
+            alert('Failed to save asset.');
+        }
+    });
+});
+
+// Delete Asset
+document.querySelectorAll('.delete-asset-btn').forEach(function(button) {
+    button.addEventListener('click', function() {
+        var assetId = this.closest('tr').dataset.assetId;
+        if (confirm('Are you sure you want to delete this asset?')) {
+            fetch('{% url "delete_asset" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({'asset_id': assetId})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Asset deleted successfully.');
+                    // Remove the asset row from the table
+                    this.closest('tr').remove();
+                } else {
+                    alert('Failed to delete asset.');
+                }
+            });
+        }
+    });
+});
+
+// Save BTAs
+document.getElementById('bta-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var formData = new FormData(this);
+    fetch('{% url "save_bta" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('BTAs saved successfully.');
+        } else {
+            alert('Failed to save BTAs.');
+        }
+    });
+});
+document.getElementById('countrySelect').addEventListener('change', function() {
+    var selectedCountryId = this.value;
+    window.location.href = "{% url 'security_manager_dashboard' %}?country_id=" + selectedCountryId;
+});
+</script>
+{% endblock %}

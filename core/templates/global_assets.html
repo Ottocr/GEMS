@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Global Assets - GEMS{% endblock %}
+
+{% block extra_css %}
+<style>
+    #global-assets-map {
+        height: 400px;
+        width: 100%;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">Global Assets</h1>
+
+    <div id="global-assets-map"></div>
+
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Asset Name</th>
+                <th>Type</th>
+                <th>Country</th>
+                <th>Latitude</th>
+                <th>Longitude</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in assets %}
+            <tr>
+                <td><a href="{% url 'asset_detail_view' asset.id %}">{{ asset.name }}</a></td>
+                <td>{{ asset.asset_type.name }}</td>
+                <td>{{ asset.country.name }}</td>
+                <td>{{ asset.latitude }}</td>
+                <td>{{ asset.longitude }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        $('.table').DataTable({
+            "pageLength": 25,
+            "order": [[0, "asc"]]
+        });
+
+        var map = L.map('global-assets-map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        var assets = {{ assets_json|safe }};
+        assets.forEach(function(asset) {
+            L.marker([asset.latitude, asset.longitude])
+                .addTo(map)
+                .bindPopup("<b>" + asset.name + "</b><br>Type: " + asset.asset_type + "<br>Country: " + asset.country);
+        });
+    });
+</script>
+{% endblock %}
