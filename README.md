@@ -6,10 +6,11 @@ GEMS (Global Enterprise Monitoring System) is a comprehensive web-based applicat
 ________________________________________
 
 Setup commands from main /GEMS/:
-Generate super user: python manage.py createsuperuser
-Generate country data: python manage.py populate_countries
-Generate test data: python manage.py populate_risk_data 
-Run: python manage.py runserver
+
+- Generate super user: python manage.py createsuperuser
+- Generate country data: python manage.py populate_countries
+- Generate test data: python manage.py populate_risk_data 
+- Run: python manage.py runserver
 
 ________________________________________
 Project Objectives:
