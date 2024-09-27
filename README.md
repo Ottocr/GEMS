@@ -1,7 +1,7 @@
-Project Overview:
 GEMS (Global Enterprise Monitoring System) is a comprehensive web-based application designed for global risk management. It enables security managers to input and manage detailed country and asset risk data, assess a wide spectrum of security risks, and visualize global risk levels. The platform addresses threats such as cyber-attacks, terrorism, activism, insider threats, and more. GEMS evaluates existing mitigations or 'barriers' and their effectiveness in reducing risks, aiming to protect assets and ensure business continuity in an increasingly complex global environment.
 ________________________________________
 Project Objectives:
+
 1.	Global Risk Assessment:
 -	Data Input: Allow security managers to input and manage detailed country and asset risk data.
 -	Risk Visualization: Provide a platform for assessing security risks and visualizing global risk levels across various threat vectors.
@@ -22,6 +22,7 @@ Project Objectives:
 -	Historical Data: Support data-driven decision-making with historical risk data.
 ________________________________________
 Key Features and Models:
+
 1.	Asset Management:
 -	AssetType:
 -	Purpose: Defines types of assets (e.g., Data Center, Office, Pipeline).
@@ -35,6 +36,7 @@ Key Features and Models:
 -	calculate_vulnerability_score()
 -	update_scores()
 -	update_risk_assessment()
+
 2.	Risk Management:
 -	RiskType:
 -	Purpose: Defines main risk categories (e.g., Cyber Threat, Terrorism).
@@ -52,6 +54,7 @@ Key Features and Models:
 -	Methods:
 -	calculate_residual_risk_score()
 -	calculate_barrier_effectiveness()
+
 3.	Barrier Management:
 -	BarrierCategory:
 -	Purpose: Categorizes barriers (e.g., Physical Security, Cybersecurity).
@@ -67,6 +70,7 @@ Key Features and Models:
 -	BarrierEffectivenessScore:
 -	Purpose: Stores effectiveness scores of barriers against specific RiskTypes.
 -	Options: Barrier, RiskType, Preventive Capability, Detection Capability, Response Capability, Reliability, Coverage.
+
 4.	Geographical Management:
 -	Continent:
 -	Purpose: Groups countries by continent.
@@ -74,11 +78,13 @@ Key Features and Models:
 -	Country:
 -	Purpose: Represents countries with operational data.
 -	Options: Name, Code, Geo Data, Continent, Company Operated.
+
 5.	Asset Linking:
 -	AssetLink:
 -	Purpose: Links multiple assets with shared risks and barriers.
 -	Options: Name, Assets, Shared Risks, Shared Barriers.
 -	Purpose in Pipeline: Manages interconnected risk profiles and updates linked assets' risk assessments.
+
 6.	Risk Matrices and Logs:
 -	FinalRiskMatrix:
 -	Purpose: Generates and stores final risk matrices for assets and RiskTypes.
@@ -91,6 +97,7 @@ Key Features and Models:
 -	RiskLog:
 -	Purpose: Logs historical risk data for assets over time.
 -	Options: Asset, RiskType, Scores (BTA, Vulnerability, Criticality, Residual Risk), Timestamp.
+
 7.	Signal Processing and Updates:
 -	Purpose: Automates updates to risk assessments and matrices when data changes.
 -	Functionality: Listens to model changes and triggers appropriate updates.
@@ -121,8 +128,11 @@ Methodologies and Approaches:
 -	RiskLogs track changes over time, supporting trend analysis and historical reviews.
 ________________________________________
 Visualization of Data Pipeline:
- 
+
+ ![image](https://github.com/user-attachments/assets/354fa52c-f59c-4432-8baa-eae1c24d11d2)
+
 Data Flow Resulting in a Risk Matrix for an Asset:
+
 1.	Asset Data Collection:
 -	Assets are created with essential information and assigned to AssetTypes and Countries.
 2.	Assessment of Criticality and Vulnerability:
@@ -146,5 +156,6 @@ Data Flow Resulting in a Risk Matrix for an Asset:
 -	Any changes trigger automated updates via signal processing.
 ________________________________________
 Conclusion:
+
 The updated GEMS system integrates asset management, risk assessment, barrier evaluation, and dynamic risk matrix generation into a cohesive platform. It leverages detailed models and relationships to accurately reflect the complex interplay between assets, risks, barriers, and geopolitical factors. Through automated updates and signal processing, the system ensures that risk assessments and matrices remain current, providing security managers with actionable insights for informed decision-making.
 
