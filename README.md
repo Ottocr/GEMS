@@ -1,4 +1,16 @@
 GEMS (Global Enterprise Monitoring System) is a comprehensive web-based application designed for global risk management. It enables security managers to input and manage detailed country and asset risk data, assess a wide spectrum of security risks, and visualize global risk levels. The platform addresses threats such as cyber-attacks, terrorism, activism, insider threats, and more. GEMS evaluates existing mitigations or 'barriers' and their effectiveness in reducing risks, aiming to protect assets and ensure business continuity in an increasingly complex global environment.
+
+
+![image](https://github.com/user-attachments/assets/ab833d07-5975-4d51-9c4e-991fb7cc0518)
+
+________________________________________
+
+Setup commands from main /GEMS/:
+Generate super user: python manage.py createsuperuser
+Generate country data: python manage.py populate_countries
+Generate test data: python manage.py populate_risk_data 
+Run: python manage.py runserver
+
 ________________________________________
 Project Objectives:
 
