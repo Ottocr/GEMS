@@ -1,15 +1,19 @@
+from datetime import timedelta
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
 from django.db.models import Avg
 from django.utils import timezone
+from django.urls import reverse
 import json
 
 # Import models
-from .models.asset_models import Asset, AssetType, AssetVulnerabilityQuestion, AssetVulnerabilityAnswer, AssetCriticalityQuestion, AssetCriticalityAnswer
-from .models.barrier_models import Barrier
+from .models.asset_models import Asset, AssetType, AssetVulnerabilityQuestion, AssetVulnerabilityAnswer, \
+    AssetCriticalityQuestion, AssetCriticalityAnswer, AssetLink
+from .models.barrier_models import Barrier, BarrierIssueReport
 from .models.geo_models import Country
-from .models.risk_models import BaselineThreatAssessment, RiskType, Scenario
+from .models.risk_models import BaselineThreatAssessment, RiskType, Scenario, FinalRiskMatrix, RiskSubtype, \
+    RiskScenarioAssessment
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from .models.log_models import RiskLog  # Ensure you have this import
