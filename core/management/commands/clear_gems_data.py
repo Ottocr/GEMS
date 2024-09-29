@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.contrib.auth.models import User
 from core.models import (
-    RiskType, RiskSubtype, Scenario, AssetType, Asset, Barrier, BarrierSubtype,
+    RiskType, RiskSubtype, Scenario, AssetType, Asset, Barrier,
     BarrierEffectivenessScore, AssetVulnerabilityQuestion, AssetCriticalityQuestion,
     AssetVulnerabilityAnswer, AssetCriticalityAnswer, BaselineThreatAssessment,
     RiskScenarioAssessment, FinalRiskMatrix, BarrierIssueReport, AssetLink,
@@ -42,7 +42,6 @@ class Command(BaseCommand):
         
         BarrierIssueReport.objects.all().delete()
         BarrierEffectivenessScore.objects.all().delete()
-        BarrierSubtype.objects.all().delete()
         Barrier.objects.all().delete()
         
         BaselineThreatAssessment.objects.all().delete()

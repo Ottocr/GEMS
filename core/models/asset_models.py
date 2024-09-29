@@ -6,7 +6,7 @@ from statistics import mean
 
 # Import models referenced in asset_models.py
 from ..models.geo_models import Country
-from ..models.risk_models import Scenario, RiskType
+from ..models.risk_models import Scenario, RiskType, RiskScenarioAssessment
 from ..models.barrier_models import Barrier, BarrierIssueReport
 
 
