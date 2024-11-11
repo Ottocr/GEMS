@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 import json
 import logging
 
@@ -20,6 +21,129 @@ from ..models.risk_models import (
     RiskType,
     FinalRiskMatrix
 )
+
+@login_required
+def search_countries(request):
+    """Search for non-operated countries."""
+    query = request.GET.get('query', '').strip()
+    if len(query) < 2:
+        return JsonResponse({'countries': []})
+    
+    countries = Country.objects.filter(
+        Q(name__icontains=query) | Q(code__icontains=query),
+        company_operated=False
+    ).values('id', 'name')[:10]
+    
+    return JsonResponse({'countries': list(countries)})
+
+@login_required
+@transaction.atomic
+def add_operated_country(request):
+    """Mark a country as operated."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid method'})
+    
+    try:
+        country_id = request.POST.get('country_id')
+        country = get_object_or_404(Country, id=country_id)
+        
+        if country.company_operated:
+            return JsonResponse({
+                'success': False,
+                'error': 'Country is already marked as operated'
+            })
+        
+        country.company_operated = True
+        country.save()
+        
+        logger.info(f"Added operated country: {country.name} (ID: {country.id})")
+        return JsonResponse({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error adding operated country: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@login_required
+@transaction.atomic
+def remove_operated_country(request):
+    """Remove country from operated list."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid method'})
+    
+    try:
+        country_id = request.POST.get('country_id')
+        country = get_object_or_404(Country, id=country_id)
+        
+        if not country.company_operated:
+            return JsonResponse({
+                'success': False,
+                'error': 'Country is not marked as operated'
+            })
+        
+        country.company_operated = False
+        country.save()
+        
+        logger.info(f"Removed operated country: {country.name} (ID: {country.id})")
+        return JsonResponse({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error removing operated country: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@login_required
+def get_country_geojson(request, country_id):
+    """Get GeoJSON data for a specific country."""
+    try:
+        country = get_object_or_404(Country, id=country_id)
+        if not country.geo_data:
+            return JsonResponse({
+                'success': False,
+                'error': 'No GeoJSON data available for this country'
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'geojson': country.geo_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting country GeoJSON: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@login_required
+def get_operated_countries_geojson(request):
+    """Get GeoJSON data for all operated countries."""
+    try:
+        countries = Country.objects.filter(company_operated=True)
+        features = []
+        
+        for country in countries:
+            if country.geo_data:
+                # Add country ID to properties for click handling
+                geo_data = country.geo_data
+                if isinstance(geo_data, str):
+                    geo_data = json.loads(geo_data)
+                
+                if 'features' in geo_data:
+                    for feature in geo_data['features']:
+                        if 'properties' not in feature:
+                            feature['properties'] = {}
+                        feature['properties']['id'] = country.id
+                        features.extend([feature])
+        
+        geojson = {
+            'type': 'FeatureCollection',
+            'features': features
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'geojson': geojson
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting operated countries GeoJSON: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @login_required
 def save_country_details(request):

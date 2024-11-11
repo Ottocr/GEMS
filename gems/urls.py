@@ -21,6 +21,11 @@ urlpatterns = [
     # Security Manager Functionality
     path('security_manager/save_country/', country_views.save_country_details, name='save_country_details'),
     path('security_manager/save_bta/', country_views.save_bta, name='save_bta'),
+    path('security_manager/search_countries/', country_views.search_countries, name='search_countries'),
+    path('security_manager/add_operated_country/', country_views.add_operated_country, name='add_operated_country'),
+    path('security_manager/remove_operated_country/', country_views.remove_operated_country, name='remove_operated_country'),
+    path('security_manager/get_country_geojson/<int:country_id>/', country_views.get_country_geojson, name='get_country_geojson'),
+    path('security_manager/get_operated_countries_geojson/', country_views.get_operated_countries_geojson, name='get_operated_countries_geojson'),
     
     # Asset Management (needed for security manager dashboard)
     path('security_manager/save_asset/', asset_views.save_asset, name='save_asset'),

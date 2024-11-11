@@ -1,7 +1,3 @@
-"""
-Dashboard Views.
-"""
-
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Max
@@ -18,7 +14,6 @@ from ..models.log_models import RiskLog
 @login_required
 def dashboard(request):
     """Main dashboard view showing global risk summary."""
-    # Previous dashboard code remains the same...
     total_countries = Country.objects.filter(company_operated=True).count()
     
     # Get the latest BTA scores for global risk average
@@ -131,6 +126,17 @@ def security_manager_dashboard(request):
     countries = Country.objects.filter(company_operated=True)
     selected_country_id = request.GET.get('country_id')
 
+    # Prepare countries data with GeoJSON
+    countries_data = []
+    for country in countries:
+        country_dict = {
+            'id': country.id,
+            'name': country.name,
+            'code': country.code,
+            'geo_data': country.geo_data if isinstance(country.geo_data, dict) else json.loads(country.geo_data) if country.geo_data else None
+        }
+        countries_data.append(country_dict)
+
     if selected_country_id:
         country = get_object_or_404(Country, id=selected_country_id)
         assets = Asset.objects.filter(country=country)
@@ -175,6 +181,7 @@ def security_manager_dashboard(request):
 
     context = {
         'countries': countries,
+        'countries_json': json.dumps(countries_data),
         'country': country,
         'assets': assets,
         'barriers': barriers,
@@ -187,3 +194,4 @@ def security_manager_dashboard(request):
         'selected_country_id': selected_country_id,
     }
     return render(request, 'security_manager_dashboard.html', context)
+
