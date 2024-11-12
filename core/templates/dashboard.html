@@ -137,6 +137,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Dynamic data from Django
     var companyOperatedCountries = JSON.parse(document.getElementById('company-operated-countries').textContent);
     var assets = JSON.parse(document.getElementById('assets').textContent);
+    var selectedCountry = '';
+    var riskOverviewChart = null;
+    var assetDistributionChart = null;
+    var assetsTable = null;
 
     console.log('Company Operated Countries:', companyOperatedCountries);
     console.log('Assets:', assets);
@@ -207,6 +211,8 @@ document.addEventListener('DOMContentLoaded', function() {
             layer.on('click', function() {
                 updateCountryDetails(country);
                 document.getElementById('country-select').value = country.name;
+                selectedCountry = country.name;
+                updateAllCharts();
                 zoomToFeature(layer);
             });
 
@@ -226,6 +232,8 @@ document.addEventListener('DOMContentLoaded', function() {
             updateCountryDetails(asset.country);
             document.getElementById('asset-select').value = asset.name;
             document.getElementById('country-select').value = asset.country.name;
+            selectedCountry = asset.country.name;
+            updateAllCharts();
             map.setView([asset.latitude, asset.longitude], 6);
         });
     });
@@ -261,13 +269,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Event listeners for dropdowns
     countrySelect.addEventListener('change', function() {
-        var selectedCountry = companyOperatedCountries.find(c => c.name === this.value);
-        if (selectedCountry) {
-            updateCountryDetails(selectedCountry);
-            if (countryLayers[selectedCountry.name]) {
-                zoomToFeature(countryLayers[selectedCountry.name]);
+        selectedCountry = this.value;
+        var selectedCountryData = companyOperatedCountries.find(c => c.name === this.value);
+        if (selectedCountryData) {
+            updateCountryDetails(selectedCountryData);
+            if (countryLayers[selectedCountryData.name]) {
+                zoomToFeature(countryLayers[selectedCountryData.name]);
             }
         }
+        updateAllCharts();
     });
 
     assetSelect.addEventListener('change', function() {
@@ -276,6 +286,8 @@ document.addEventListener('DOMContentLoaded', function() {
             updateAssetDetails(selectedAsset);
             updateCountryDetails(selectedAsset.country);
             document.getElementById('country-select').value = selectedAsset.country.name;
+            selectedCountry = selectedAsset.country.name;
+            updateAllCharts();
             map.setView([selectedAsset.latitude, selectedAsset.longitude], 6);
         }
     });
@@ -357,7 +369,11 @@ document.addEventListener('DOMContentLoaded', function() {
             'Severe': 0
         };
 
-        companyOperatedCountries.forEach(country => {
+        let countriesToAnalyze = selectedCountry ? 
+            companyOperatedCountries.filter(c => c.name === selectedCountry) : 
+            companyOperatedCountries;
+
+        countriesToAnalyze.forEach(country => {
             let score;
             if (category === 'avg') {
                 score = country.avg_bta_score;
@@ -394,19 +410,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 categories: Object.keys(severityData),
             },
             title: {
-                text: 'Risk Severity Distribution',
+                text: selectedCountry ? `Risk Severity Distribution - ${selectedCountry}` : 'Global Risk Severity Distribution',
                 align: 'center'
             }
         };
 
-        let chart = new ApexCharts(document.querySelector("#risk-overview-chart"), options);
-        chart.render();
+        if (riskOverviewChart) {
+            riskOverviewChart.destroy();
+        }
+        riskOverviewChart = new ApexCharts(document.querySelector("#risk-overview-chart"), options);
+        riskOverviewChart.render();
     }
 
     // Function to create Asset Distribution chart
     function createAssetDistributionChart() {
+        let filteredAssets = selectedCountry ? 
+            assets.filter(asset => asset.country.name === selectedCountry) : 
+            assets;
+
         let assetTypes = {};
-        assets.forEach(asset => {
+        filteredAssets.forEach(asset => {
             if (assetTypes[asset.asset_type]) {
                 assetTypes[asset.asset_type]++;
             } else {
@@ -422,19 +445,30 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             labels: Object.keys(assetTypes),
             title: {
-                text: 'Asset Distribution by Type',
+                text: selectedCountry ? `Asset Distribution - ${selectedCountry}` : 'Global Asset Distribution',
                 align: 'center'
             }
         };
 
-        let chart = new ApexCharts(document.querySelector("#asset-distribution-chart"), options);
-        chart.render();
+        if (assetDistributionChart) {
+            assetDistributionChart.destroy();
+        }
+        assetDistributionChart = new ApexCharts(document.querySelector("#asset-distribution-chart"), options);
+        assetDistributionChart.render();
     }
 
     // Function to populate Assets Overview table
     function populateAssetsTable() {
-        let table = $('#assets-table').DataTable({
-            data: assets,
+        if (assetsTable) {
+            assetsTable.destroy();
+        }
+
+        let filteredAssets = selectedCountry ? 
+            assets.filter(asset => asset.country.name === selectedCountry) : 
+            assets;
+
+        assetsTable = $('#assets-table').DataTable({
+            data: filteredAssets,
             columns: [
                 { data: 'name' },
                 { data: 'asset_type' },
@@ -457,10 +491,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Call functions to create charts and populate table
-    updateRiskSeverityDistribution('avg');
-    createAssetDistributionChart();
-    populateAssetsTable();
+    // Function to update all charts
+    function updateAllCharts() {
+        updateRiskSeverityDistribution(btaCategorySelect.value);
+        createAssetDistributionChart();
+        populateAssetsTable();
+    }
+
+    // Initial chart creation
+    updateAllCharts();
 });
 </script>
 {% endblock %}
