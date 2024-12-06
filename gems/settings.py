@@ -23,12 +23,16 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles',
+    'django.contrib.staticfiles',  # Required for admin interface
+    'rest_framework',
+    'rest_framework.authtoken',
+    'corsheaders',
     'core',
     'users',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -38,8 +42,19 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# CORS settings
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all origins in development
+CORS_ALLOWED_ORIGINS = [
+    # Add your frontend URLs here in production
+    # "https://example.com",
+    # "https://sub.example.com",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 ROOT_URLCONF = 'gems.urls'
 
+# Template configuration (minimal, only for admin interface)
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -66,6 +81,29 @@ DATABASES = {
     }
 }
 
+# Static files (CSS, JavaScript, Images) - minimal for admin interface
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# REST Framework settings
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ] if not DEBUG else [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 100,
+    'UNAUTHENTICATED_USER': None,
+}
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -87,9 +125,6 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
-
-# Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -132,8 +167,3 @@ LOGGING = {
         },
     },
 }
-
-# Login URL
-LOGIN_URL = '/login/'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/login/'

@@ -1,0 +1,199 @@
+{
+	"info": {
+		"_postman_id": "gems-api-collection",
+		"name": "GEMS API Collection",
+		"description": "API collection for Global Enterprise Monitoring System",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{auth_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Dashboard",
+			"item": [
+				{
+					"name": "Get Dashboard Overview",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/dashboard/",
+						"description": "Get global statistics and risk overview"
+					}
+				}
+			]
+		},
+		{
+			"name": "Security Manager",
+			"item": [
+				{
+					"name": "Get Security Manager Data",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/security-manager/data/",
+						"description": "Get reference data for security managers"
+					}
+				}
+			]
+		},
+		{
+			"name": "Countries",
+			"item": [
+				{
+					"name": "Get Country Details",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/countries/{{country_id}}/",
+						"description": "Get detailed information about a specific country"
+					}
+				}
+			]
+		},
+		{
+			"name": "Assets",
+			"item": [
+				{
+					"name": "Get Global Assets",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/assets/",
+						"description": "Get list of all assets"
+					}
+				},
+				{
+					"name": "Get Asset Details",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/assets/{{asset_id}}/",
+						"description": "Get detailed information about a specific asset"
+					}
+				},
+				{
+					"name": "Get Asset Risk Data",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/assets/{{asset_id}}/risk-data/",
+						"description": "Get risk matrices and assessments for an asset"
+					}
+				},
+				{
+					"name": "Get Asset Barriers",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/assets/{{asset_id}}/barriers/",
+						"description": "Get barriers and their effectiveness for an asset"
+					}
+				},
+				{
+					"name": "Add Asset Barrier",
+					"request": {
+						"method": "POST",
+						"url": "{{base_url}}/api/assets/add-barrier/",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"asset_id\": 1,\n    \"barrier_id\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Add a barrier to an asset"
+					}
+				},
+				{
+					"name": "Remove Asset Barrier",
+					"request": {
+						"method": "POST",
+						"url": "{{base_url}}/api/assets/remove-barrier/",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"asset_id\": 1,\n    \"barrier_id\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Remove a barrier from an asset"
+					}
+				}
+			]
+		},
+		{
+			"name": "Barriers",
+			"item": [
+				{
+					"name": "Get Barrier Assessments",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/barriers/assessments/",
+						"description": "Get effectiveness assessments for all barriers"
+					}
+				},
+				{
+					"name": "Get Barrier Details",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/barriers/{{barrier_id}}/details/",
+						"description": "Get detailed information about a specific barrier"
+					}
+				},
+				{
+					"name": "Get Barrier Trends",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/barriers/{{barrier_id}}/trends/",
+						"description": "Get trend data for a barrier's effectiveness"
+					}
+				}
+			]
+		},
+		{
+			"name": "Risk Assessment",
+			"item": [
+				{
+					"name": "Get Risk Types",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/risks/types/",
+						"description": "Get all risk types and their subtypes"
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "your-token-here",
+			"type": "string"
+		},
+		{
+			"key": "asset_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "barrier_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "country_id",
+			"value": "1",
+			"type": "string"
+		}
+	]
+}

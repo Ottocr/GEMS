@@ -1,124 +1,147 @@
-from django.shortcuts import render, get_object_or_404
-from django.contrib.auth.decorators import login_required
+"""
+Barrier Management API Views.
+
+This module contains API endpoints for managing barriers and their assessments.
+"""
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
-from django.db.models import Avg
+from django.db.models import Avg, Q
 from django.utils import timezone
 from datetime import timedelta
 import json
 
 from ..models.barrier_models import (
-    Barrier, BarrierCategory, BarrierCharacteristicAssessment,
-    BarrierEffectivenessScore, BarrierIssueReport, BarrierScenarioEffectiveness
+    Barrier, BarrierCategory, BarrierEffectivenessScore,
+    BarrierIssueReport, BarrierScenarioEffectiveness
 )
 from ..models.asset_models import Asset
-from ..models.risk_models import RiskType, Scenario, FinalRiskMatrix
+from ..models.risk_models import RiskType, RiskSubtype, Scenario, FinalRiskMatrix
 
-@login_required
-def barrier_assessment_list(request):
-    """Display list of barrier assessments"""
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_risk_subtypes(request):
+    """API endpoint to get risk subtypes for a specific risk type"""
+    risk_type_id = request.GET.get('risk_type')
+    if not risk_type_id:
+        return JsonResponse([], safe=False)
+    
+    subtypes = RiskSubtype.objects.filter(risk_type_id=risk_type_id).values('id', 'name')
+    return JsonResponse(list(subtypes), safe=False)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_barrier_assessments(request):
+    """API endpoint to get list of barrier assessments"""
     barriers = Barrier.objects.select_related(
         'category'
     ).prefetch_related(
         'effectiveness_scores',
-        'characteristic_assessments',
-        'assets'
+        'assets',
+        'risk_types',
+        'risk_subtypes'
     ).annotate(
         avg_effectiveness=Avg('effectiveness_scores__overall_effectiveness_score')
     )
     
-    context = {
-        'barriers': barriers,
-    }
-    return render(request, 'barrier_assessment_list.html', context)
+    barriers_data = []
+    for barrier in barriers:
+        effectiveness_scores = {}
+        for score in barrier.effectiveness_scores.all():
+            key = f"type_{score.risk_type_id}" if not score.risk_subtype else f"subtype_{score.risk_subtype_id}"
+            effectiveness_scores[key] = {
+                'risk_type': score.risk_type.name,
+                'risk_subtype': score.risk_subtype.name if score.risk_subtype else None,
+                'overall': score.overall_effectiveness_score
+            }
 
-@login_required
-def barrier_assessment(request, barrier_id):
-    """Display barrier assessment form"""
+        barriers_data.append({
+            'id': barrier.id,
+            'name': barrier.name,
+            'description': barrier.description,
+            'category': barrier.category.name,
+            'avg_effectiveness': barrier.avg_effectiveness,
+            'assets_count': barrier.assets.count(),
+            'effectiveness_scores': effectiveness_scores,
+            'risk_types': [{'id': rt.id, 'name': rt.name} for rt in barrier.risk_types.all()],
+            'risk_subtypes': [
+                {
+                    'id': rs.id,
+                    'name': rs.name,
+                    'risk_type': {
+                        'id': rs.risk_type.id,
+                        'name': rs.risk_type.name
+                    }
+                } 
+                for rs in barrier.risk_subtypes.all()
+            ]
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'barrier_categories': list(BarrierCategory.objects.values('id', 'name', 'description')),
+        'barriers': barriers_data
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_barrier_details(request, barrier_id):
+    """API endpoint to get barrier assessment details"""
     barrier = get_object_or_404(Barrier, id=barrier_id)
     asset_id = request.GET.get('asset')
     asset = get_object_or_404(Asset, id=asset_id) if asset_id else None
     
-    context = {
-        'barrier': barrier,
-        'asset': asset,
-        'characteristics': barrier.category.characteristics.all(),
-        'scenarios': Scenario.objects.filter(barriers=barrier),
-        'risk_types': RiskType.objects.all(),
-    }
-    
-    return render(request, 'barrier_assessment.html', context)
-
-@login_required
-def get_barrier_assessment_form(request, barrier_id):
-    """Get the assessment form for a specific barrier"""
-    barrier = get_object_or_404(Barrier, id=barrier_id)
-    
-    # Get existing assessments
-    characteristic_assessments = {
-        assessment.characteristic_id: assessment.selected_value
-        for assessment in barrier.characteristic_assessments.all()
-    }
-    
-    effectiveness_scores = {
-        score.risk_type_id: {
+    # Get effectiveness scores for both risk types and subtypes
+    effectiveness_scores = {}
+    for score in barrier.effectiveness_scores.all():
+        key = f"type_{score.risk_type_id}" if not score.risk_subtype else f"subtype_{score.risk_subtype_id}"
+        effectiveness_scores[key] = {
+            'risk_type': score.risk_type.name,
+            'risk_subtype': score.risk_subtype.name if score.risk_subtype else None,
             'preventive': score.preventive_capability,
             'detection': score.detection_capability,
             'response': score.response_capability,
             'reliability': score.reliability,
-            'coverage': score.coverage
+            'coverage': score.coverage,
+            'overall': score.overall_effectiveness_score
         }
-        for score in barrier.effectiveness_scores.all()
-    }
     
-    context = {
-        'barrier': barrier,
-        'characteristic_assessments': characteristic_assessments,
-        'effectiveness_scores': effectiveness_scores
-    }
-    
-    return render(request, 'partials/barrier_assessment_form.html', context)
-
-@login_required
-@csrf_exempt
-def save_barrier_characteristics(request, barrier_id):
-    """Save barrier characteristic assessments"""
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid method'})
-    
-    try:
-        data = json.loads(request.body)
-        barrier = get_object_or_404(Barrier, id=barrier_id)
-        
-        with transaction.atomic():
-            for char_id, value in data.get('characteristics', {}).items():
-                characteristic = barrier.category.characteristics.get(id=char_id)
-                score = next(
-                    (item['score'] for item in characteristic.possible_values 
-                     if item['value'] == value),
-                    5  # Default score if no match found
-                )
-                BarrierCharacteristicAssessment.objects.update_or_create(
-                    barrier=barrier,
-                    characteristic_id=char_id,
-                    defaults={
-                        'selected_value': value,
-                        'score': score
+    return JsonResponse({
+        'success': True,
+        'barrier': {
+            'id': barrier.id,
+            'name': barrier.name,
+            'category': barrier.category.name,
+            'description': barrier.description,
+            'scenarios': list(Scenario.objects.filter(barriers=barrier).values()),
+            'risk_types': [{'id': rt.id, 'name': rt.name} for rt in barrier.risk_types.all()],
+            'risk_subtypes': [
+                {
+                    'id': rs.id,
+                    'name': rs.name,
+                    'risk_type': {
+                        'id': rs.risk_type.id,
+                        'name': rs.risk_type.name
                     }
-                )
-        
-        return JsonResponse({'success': True})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+                } 
+                for rs in barrier.risk_subtypes.all()
+            ],
+            'effectiveness_scores': effectiveness_scores,
+            'asset': {
+                'id': asset.id,
+                'name': asset.name
+            } if asset else None
+        }
+    })
 
-@login_required
-@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def save_barrier_scenarios(request, barrier_id):
-    """Save barrier scenario effectiveness"""
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid method'})
-    
+    """API endpoint to save barrier scenario effectiveness"""
     try:
         data = json.loads(request.body)
         barrier = get_object_or_404(Barrier, id=barrier_id)
@@ -135,22 +158,37 @@ def save_barrier_scenarios(request, barrier_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
-@login_required
-@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def save_barrier_effectiveness(request, barrier_id):
-    """Save barrier effectiveness scores"""
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid method'})
-    
+    """API endpoint to save barrier effectiveness scores"""
     try:
         data = json.loads(request.body)
         barrier = get_object_or_404(Barrier, id=barrier_id)
         
         with transaction.atomic():
-            for risk_type_id, scores in data.get('effectiveness', {}).items():
+            # Handle risk type level scores
+            for risk_type_id, scores in data.get('risk_types', {}).items():
                 BarrierEffectivenessScore.objects.update_or_create(
                     barrier=barrier,
                     risk_type_id=risk_type_id,
+                    risk_subtype=None,
+                    defaults={
+                        'preventive_capability': scores.get('preventive', 5),
+                        'detection_capability': scores.get('detection', 5),
+                        'response_capability': scores.get('response', 5),
+                        'reliability': scores.get('reliability', 5),
+                        'coverage': scores.get('coverage', 5)
+                    }
+                )
+            
+            # Handle risk subtype level scores
+            for subtype_id, scores in data.get('risk_subtypes', {}).items():
+                subtype = get_object_or_404(RiskSubtype, id=subtype_id)
+                BarrierEffectivenessScore.objects.update_or_create(
+                    barrier=barrier,
+                    risk_type=subtype.risk_type,
+                    risk_subtype=subtype,
                     defaults={
                         'preventive_capability': scores.get('preventive', 5),
                         'detection_capability': scores.get('detection', 5),
@@ -166,9 +204,10 @@ def save_barrier_effectiveness(request, barrier_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
-@login_required
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_barrier_trends(request, barrier_id):
-    """Get trend data for a specific barrier"""
+    """API endpoint to get trend data for a specific barrier"""
     barrier = get_object_or_404(Barrier, id=barrier_id)
     
     # Calculate date range
@@ -194,66 +233,56 @@ def get_barrier_trends(request, barrier_id):
         trend_percentage = 0
         trend_direction = 'stable'
     
-    # Get component effectiveness
-    components = []
-    for assessment in barrier.characteristic_assessments.all():
-        components.append({
-            'name': assessment.characteristic.name,
-            'score': assessment.score,
-            'change': 0  # You would calculate this from historical data
+    # Get risk impacts for both types and subtypes
+    risk_impacts = []
+    
+    # Risk type impacts
+    for risk_type in barrier.risk_types.all():
+        score = barrier.get_risk_category_effectiveness_score(risk_type)
+        risk_impacts.append({
+            'name': risk_type.name,
+            'type': 'risk_type',
+            'reduction': score
         })
     
-    # Get risk impacts
-    risk_impacts = []
-    for score in barrier.effectiveness_scores.all():
+    # Risk subtype impacts
+    for subtype in barrier.risk_subtypes.all():
+        score = barrier.get_risk_category_effectiveness_score(subtype.risk_type)
         risk_impacts.append({
-            'name': score.risk_type.name,
-            'reduction': score.overall_effectiveness_score
+            'name': f"{subtype.risk_type.name} - {subtype.name}",
+            'type': 'risk_subtype',
+            'reduction': score
         })
     
     # Get recent issues
-    issues = BarrierIssueReport.objects.filter(
+    issues = list(BarrierIssueReport.objects.filter(
         barrier=barrier,
         reported_at__gte=start_date
-    ).order_by('-reported_at')
+    ).order_by('-reported_at').values())
     
-    # Prepare chart data
-    chart_data = {
-        'dates': dates,
-        'effectiveness_scores': effectiveness_data,
-        'component_labels': [c['name'] for c in components],
-        'component_scores': [c['score'] for c in components],
-        'risk_labels': [r['name'] for r in risk_impacts],
-        'risk_reductions': [r['reduction'] for r in risk_impacts],
-        'risk_colors': [
-            '#27ae60' if r['reduction'] >= 70 else '#f1c40f' if r['reduction'] >= 40 else '#e74c3c'
-            for r in risk_impacts
-        ]
-    }
-    
-    context = {
-        'barrier': barrier,
-        'trend_direction': trend_direction,
-        'trend_percentage': trend_percentage,
-        'components': components,
-        'risk_impacts': risk_impacts,
-        'issues': issues,
-        'chart_data': chart_data
-    }
-    
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return JsonResponse(chart_data)
-    
-    return render(request, 'partials/barrier_trends.html', context)
+    return JsonResponse({
+        'success': True,
+        'trend_data': {
+            'dates': dates,
+            'effectiveness_scores': effectiveness_data,
+            'trend': {
+                'direction': trend_direction,
+                'percentage': trend_percentage
+            },
+            'risk_impacts': risk_impacts,
+            'issues': issues
+        }
+    })
 
-@login_required
-@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def report_barrier_issue(request):
-    """Report an issue with a specific barrier"""
-    if request.method == 'POST':
-        barrier_id = request.POST.get('barrier_id')
-        description = request.POST.get('description')
-        impact_rating = request.POST.get('impact_rating')
+    """API endpoint to report an issue with a specific barrier"""
+    try:
+        data = json.loads(request.body)
+        barrier_id = data.get('barrier_id')
+        description = data.get('description')
+        impact_rating = data.get('impact_rating')
         
         barrier = get_object_or_404(Barrier, id=barrier_id)
         
@@ -273,16 +302,17 @@ def report_barrier_issue(request):
             FinalRiskMatrix.generate_matrices(asset)
         
         return JsonResponse({'success': True, 'message': 'Issue reported successfully'})
-    
-    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
-@login_required
-@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def resolve_barrier_issue(request, issue_id):
-    """Resolve a reported barrier issue"""
-    if request.method == 'POST':
+    """API endpoint to resolve a reported barrier issue"""
+    try:
+        data = json.loads(request.body)
         issue = get_object_or_404(BarrierIssueReport, id=issue_id)
-        resolution_notes = request.POST.get('resolution_notes')
+        resolution_notes = data.get('resolution_notes')
         
         issue.status = 'RESOLVED'
         issue.resolved_at = timezone.now()
@@ -294,11 +324,44 @@ def resolve_barrier_issue(request, issue_id):
         issue.barrier.propagate_effectiveness()
         
         return JsonResponse({'success': True, 'message': 'Issue resolved successfully'})
-    
-    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
-@login_required
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_barriers_by_category(request, category_id):
-    """Get barriers for a specific category"""
-    barriers = Barrier.objects.filter(category_id=category_id).values('id', 'name')
-    return JsonResponse({'barriers': list(barriers)})
+    """API endpoint to get barriers for a specific category"""
+    category = get_object_or_404(BarrierCategory, id=category_id)
+    barriers = Barrier.objects.filter(category=category).prefetch_related(
+        'risk_types', 'risk_subtypes'
+    ).values('id', 'name')
+    
+    barriers_data = []
+    for barrier in barriers:
+        barrier_obj = Barrier.objects.get(id=barrier['id'])
+        barriers_data.append({
+            'id': barrier['id'],
+            'name': barrier['name'],
+            'risk_types': [{'id': rt.id, 'name': rt.name} for rt in barrier_obj.risk_types.all()],
+            'risk_subtypes': [
+                {
+                    'id': rs.id,
+                    'name': rs.name,
+                    'risk_type': {
+                        'id': rs.risk_type.id,
+                        'name': rs.risk_type.name
+                    }
+                }
+                for rs in barrier_obj.risk_subtypes.all()
+            ]
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'category': {
+            'id': category.id,
+            'name': category.name,
+            'description': category.description
+        },
+        'barriers': barriers_data
+    })

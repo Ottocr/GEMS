@@ -1,5 +1,12 @@
-from django.shortcuts import render, get_object_or_404
-from django.contrib.auth.decorators import login_required
+"""
+Dashboard API Views.
+"""
+
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 from django.db.models import Avg, Max
 import json
 
@@ -11,9 +18,11 @@ from ..models.geo_models import Country
 from ..models.risk_models import BaselineThreatAssessment, RiskType, Scenario
 from ..models.log_models import RiskLog
 
-@login_required
-def dashboard(request):
-    """Main dashboard view showing global risk summary."""
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_dashboard_data(request):
+    """API endpoint returning global risk summary data."""
     total_countries = Country.objects.filter(company_operated=True).count()
     
     # Get the latest BTA scores for global risk average
@@ -35,7 +44,7 @@ def dashboard(request):
     avg_global_risk_score = sum(latest_bta_scores) / len(latest_bta_scores) if latest_bta_scores else 0
 
     # Fetch recent risk updates
-    recent_updates = RiskLog.objects.order_by('-timestamp')[:5]
+    recent_updates = list(RiskLog.objects.order_by('-timestamp')[:5].values())
 
     # Fetch data for Interactive World Map
     countries = Country.objects.filter(company_operated=True)
@@ -106,23 +115,23 @@ def dashboard(request):
         }
         asset_data.append(asset_dict)
 
-    # Fetch risk types for BTA Risk Categories
-    risk_types = RiskType.objects.all()
+    # Fetch risk types
+    risk_types = list(RiskType.objects.values())
 
-    context = {
+    return Response({
         'total_countries': total_countries,
         'avg_global_risk_score': round(avg_global_risk_score, 2),
         'recent_updates': recent_updates,
-        'countries': json.dumps(country_data or []),
-        'assets': json.dumps(asset_data or []),
+        'countries': country_data,
+        'assets': asset_data,
         'risk_types': risk_types,
-    }
+    })
 
-    return render(request, 'dashboard.html', context)
-
-@login_required
-def security_manager_dashboard(request):
-    """Dashboard for security managers to manage assets and barriers."""
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_security_manager_data(request):
+    """API endpoint for security manager dashboard data."""
     countries = Country.objects.filter(company_operated=True)
     selected_country_id = request.GET.get('country_id')
 
@@ -137,61 +146,60 @@ def security_manager_dashboard(request):
         }
         countries_data.append(country_dict)
 
-    if selected_country_id:
-        country = get_object_or_404(Country, id=selected_country_id)
-        assets = Asset.objects.filter(country=country)
-        
-        # Get all risk types
-        risk_types = RiskType.objects.all()
-        
-        # Create a list of BTAs, using the latest BTA for each risk type if it exists
-        bta_list = []
-        for risk_type in risk_types:
-            # Try to get the latest BTA for this risk type
-            latest_bta = BaselineThreatAssessment.objects.filter(
-                country=country,
-                risk_type=risk_type
-            ).order_by('-date_assessed').first()
-            
-            if latest_bta:
-                # Use existing BTA
-                bta_list.append(latest_bta)
-            else:
-                # Create a dummy BTA object (not saved to database)
-                bta = BaselineThreatAssessment(
-                    country=country,
-                    risk_type=risk_type,
-                    baseline_score=5,  # Default score
-                    impact_on_assets=True,  # Default impact
-                    notes=''  # Empty notes
-                )
-                bta_list.append(bta)
-    else:
-        country = None
-        assets = None
-        bta_list = None
-
-    # Other data that is not country-specific
-    barriers = Barrier.objects.all()
-    v_questions = AssetVulnerabilityQuestion.objects.all()
-    c_questions = AssetCriticalityQuestion.objects.all()
-    scenarios = Scenario.objects.all()
-    asset_types = AssetType.objects.all()
-    risk_types = RiskType.objects.all()
-
-    context = {
-        'countries': countries,
-        'countries_json': json.dumps(countries_data),
-        'country': country,
-        'assets': assets,
-        'barriers': barriers,
-        'bta_list': bta_list,
-        'v_questions': v_questions,
-        'c_questions': c_questions,
-        'scenarios': scenarios,
-        'asset_types': asset_types,
-        'risk_types': risk_types,
-        'selected_country_id': selected_country_id,
+    response_data = {
+        'countries': countries_data,
+        'barriers': list(Barrier.objects.values()),
+        'vulnerability_questions': list(AssetVulnerabilityQuestion.objects.values()),
+        'criticality_questions': list(AssetCriticalityQuestion.objects.values()),
+        'scenarios': list(Scenario.objects.values()),
+        'asset_types': list(AssetType.objects.values()),
+        'risk_types': list(RiskType.objects.values()),
     }
-    return render(request, 'security_manager_dashboard.html', context)
 
+    if selected_country_id:
+        try:
+            country = get_object_or_404(Country, id=selected_country_id)
+            assets = Asset.objects.filter(country=country)
+            risk_types = RiskType.objects.all()
+            
+            # Create a list of BTAs
+            bta_list = []
+            for risk_type in risk_types:
+                latest_bta = BaselineThreatAssessment.objects.filter(
+                    country=country,
+                    risk_type=risk_type
+                ).order_by('-date_assessed').first()
+                
+                if latest_bta:
+                    bta_list.append({
+                        'country_id': country.id,
+                        'risk_type_id': risk_type.id,
+                        'baseline_score': latest_bta.baseline_score,
+                        'impact_on_assets': latest_bta.impact_on_assets,
+                        'notes': latest_bta.notes,
+                        'date_assessed': latest_bta.date_assessed.strftime("%Y-%m-%d")
+                    })
+                else:
+                    bta_list.append({
+                        'country_id': country.id,
+                        'risk_type_id': risk_type.id,
+                        'baseline_score': 5,
+                        'impact_on_assets': True,
+                        'notes': '',
+                        'date_assessed': None
+                    })
+
+            response_data.update({
+                'selected_country': {
+                    'id': country.id,
+                    'name': country.name,
+                    'code': country.code,
+                    'geo_data': country.geo_data if isinstance(country.geo_data, dict) else json.loads(country.geo_data) if country.geo_data else None
+                },
+                'assets': list(assets.values()),
+                'bta_list': bta_list
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
+    return Response(response_data)

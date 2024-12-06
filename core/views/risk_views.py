@@ -1,41 +1,22 @@
 """
-Risk Assessment Views.
-
-This module contains views related to risk assessment workflows and risk matrix generation.
-It handles the complete risk assessment process, from initial assessment to final risk
-matrix generation.
-
-Main components:
-- Risk assessment workflow
-- Risk matrix generation
-- Step-by-step assessment process
-- Risk scenario evaluation
-- Barrier effectiveness integration
-
-The risk views implement the core risk assessment methodology, combining:
-- Baseline Threat Assessments (BTAs)
-- Asset vulnerability and criticality
-- Barrier effectiveness
-- Scenario likelihood and impact
-
-This creates a comprehensive risk assessment that helps identify and prioritize risks
-across assets and locations.
+Risk Assessment API Views.
 """
 
-from django.shortcuts import render, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg
 import json
 
 from ..models.asset_models import (
     Asset, AssetVulnerabilityAnswer, AssetCriticalityAnswer
 )
 from ..models.barrier_models import (
-    Barrier, BarrierCharacteristicAssessment,
-    BarrierEffectivenessScore
+    Barrier, BarrierEffectivenessScore
 )
 from ..models.risk_models import (
     BaselineThreatAssessment, RiskType, RiskSubtype,
@@ -43,47 +24,24 @@ from ..models.risk_models import (
 )
 from ..models.log_models import RiskLog
 
-@login_required
-def risk_assessment_workflow(request):
-    """Main view for the step-by-step risk assessment workflow.
-    
-    The workflow consists of several steps:
-    1. Asset Selection and Context
-    2. Baseline Threat Assessment Review
-    3. Vulnerability Assessment
-    4. Criticality Assessment
-    5. Scenario Evaluation
-    6. Barrier Assessment
-    7. Final Risk Matrix Generation
-    
-    Each step builds upon the previous ones to create a comprehensive
-    risk assessment for the selected asset.
-    """
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_risk_assessment_data(request):
+    """API endpoint for risk assessment workflow data."""
     assets = Asset.objects.select_related(
         'asset_type', 'country'
     ).prefetch_related(
         'barriers', 'scenarios',
         'risk_scenario_assessments'
-    ).annotate(
-        high_risks=Count('risk_scenario_assessments',
-            filter=Q(risk_scenario_assessments__residual_risk_score__gt=7)
-        ),
-        medium_risks=Count('risk_scenario_assessments',
-            filter=Q(
-                risk_scenario_assessments__residual_risk_score__gt=4,
-                risk_scenario_assessments__residual_risk_score__lte=7
-            )
-        ),
-        low_risks=Count('risk_scenario_assessments',
-            filter=Q(risk_scenario_assessments__residual_risk_score__lte=4)
-        )
     )
     
     barriers = Barrier.objects.select_related(
         'category'
     ).prefetch_related(
         'effectiveness_scores',
-        'characteristic_assessments'
+        'risk_types',
+        'risk_subtypes'
     ).annotate(
         avg_effectiveness=Avg('effectiveness_scores__overall_effectiveness_score')
     )
@@ -91,10 +49,10 @@ def risk_assessment_workflow(request):
     risk_types = RiskType.objects.prefetch_related('subtypes')
     scenarios = Scenario.objects.prefetch_related('risk_subtypes', 'barriers')
     
-    # Convert assets to JSON for map
-    assets_json = []
+    # Convert assets to JSON format
+    assets_data = []
     for asset in assets:
-        assets_json.append({
+        assets_data.append({
             'id': asset.id,
             'name': asset.name,
             'asset_type': asset.asset_type.name,
@@ -108,37 +66,88 @@ def risk_assessment_workflow(request):
             }
         })
     
-    context = {
-        'assets': assets,
-        'assets_json': json.dumps(assets_json),
-        'barriers': barriers,
-        'risk_types': risk_types,
-        'scenarios': scenarios
-    }
-    
-    return render(request, 'risk_assessment_workflow.html', context)
+    # Convert barriers to JSON format with risk associations
+    barriers_data = []
+    for barrier in barriers:
+        barriers_data.append({
+            'id': barrier.id,
+            'name': barrier.name,
+            'category': barrier.category.name,
+            'description': barrier.description,
+            'avg_effectiveness': barrier.avg_effectiveness,
+            'risk_types': [{'id': rt.id, 'name': rt.name} for rt in barrier.risk_types.all()],
+            'risk_subtypes': [
+                {
+                    'id': rs.id,
+                    'name': rs.name,
+                    'risk_type': {
+                        'id': rs.risk_type.id,
+                        'name': rs.risk_type.name
+                    }
+                }
+                for rs in barrier.risk_subtypes.all()
+            ]
+        })
 
-@login_required
-@csrf_exempt
+    # Convert risk types to JSON format with subtypes
+    risk_types_data = []
+    for risk_type in risk_types:
+        risk_types_data.append({
+            'id': risk_type.id,
+            'name': risk_type.name,
+            'description': risk_type.description,
+            'subtypes': [
+                {
+                    'id': subtype.id,
+                    'name': subtype.name,
+                    'description': subtype.description
+                }
+                for subtype in risk_type.subtypes.all()
+            ]
+        })
+
+    # Convert scenarios to JSON format with risk associations
+    scenarios_data = []
+    for scenario in scenarios:
+        scenarios_data.append({
+            'id': scenario.id,
+            'name': scenario.name,
+            'description': scenario.description,
+            'risk_subtypes': [
+                {
+                    'id': rs.id,
+                    'name': rs.name,
+                    'risk_type': {
+                        'id': rs.risk_type.id,
+                        'name': rs.risk_type.name
+                    }
+                }
+                for rs in scenario.risk_subtypes.all()
+            ],
+            'barriers': [
+                {
+                    'id': barrier.id,
+                    'name': barrier.name,
+                    'category': barrier.category.name
+                }
+                for barrier in scenario.barriers.all()
+            ]
+        })
+
+    return Response({
+        'assets': assets_data,
+        'barriers': barriers_data,
+        'risk_types': risk_types_data,
+        'scenarios': scenarios_data
+    })
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def save_risk_assessment(request):
-    """Save the complete risk assessment from the workflow.
-    
-    Handles saving of:
-    - BTA scores
-    - Scenario assessments
-    - Barrier configurations
-    - Effectiveness scores
-    
-    Also triggers:
-    - Final risk matrix generation
-    - Risk log creation
-    - Asset risk score updates
-    """
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid method'})
-    
+    """API endpoint to save the complete risk assessment."""
     try:
-        data = json.loads(request.body)
+        data = request.data
         asset_id = data.get('selectedAsset')
         risk_assessments = data.get('riskAssessments', {})
         barrier_configs = data.get('barrierConfigurations', {})
@@ -168,21 +177,6 @@ def save_risk_assessment(request):
             # Save barrier configurations
             for barrier_id, config in barrier_configs.items():
                 barrier = Barrier.objects.get(id=barrier_id)
-                
-                # Save characteristic assessments
-                for char_id, value in config.get('characteristics', {}).items():
-                    BarrierCharacteristicAssessment.objects.update_or_create(
-                        barrier=barrier,
-                        characteristic_id=char_id,
-                        defaults={
-                            'selected_value': value,
-                            'score': next(
-                                (item['score'] for item in barrier.category.characteristics.get(id=char_id).possible_values 
-                                if item['value'] == value),
-                                5  # Default score if no match found
-                            )
-                        }
-                    )
                 
                 # Save effectiveness scores
                 for risk_type_id, scores in config.get('effectiveness', {}).items():
@@ -216,45 +210,33 @@ def save_risk_assessment(request):
                 ).first().residual_risk_score
             )
             
-        return JsonResponse({'success': True})
+        return Response({'success': True})
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        return Response({'success': False, 'error': str(e)}, status=400)
 
-@login_required
-def risk_matrix_generator(request):
-    """Generate risk matrices for assets.
-    
-    Creates visual risk matrices showing:
-    - Likelihood vs Impact plots
-    - Scenario distribution
-    - Risk levels by color
-    - Barrier effectiveness indicators
-    """
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_risk_matrix_data(request):
+    """API endpoint to get risk matrix data."""
     assets = Asset.objects.all()
     risk_types = RiskType.objects.all()
     
-    context = {
-        'assets': assets,
-        'risk_types': risk_types,
-    }
-    
-    return render(request, 'risk_matrix_generator.html', context)
+    return Response({
+        'assets': list(assets.values('id', 'name', 'asset_type__name')),
+        'risk_types': list(risk_types.values()),
+    })
 
-@login_required
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def generate_risk_matrix(request):
-    """Generate risk matrix data for visualization.
-    
-    Creates a 5x5 matrix showing:
-    - Scenario placement based on likelihood and impact
-    - Color coding for risk levels
-    - Barrier effectiveness indicators
-    - Risk reduction arrows
-    """
+    """API endpoint to generate risk matrix visualization data."""
     asset_id = request.GET.get('asset_id')
     risk_type_id = request.GET.get('risk_type_id')
     
     if not asset_id or not risk_type_id:
-        return JsonResponse({'success': False, 'error': 'Missing parameters'})
+        return Response({'success': False, 'error': 'Missing parameters'}, status=400)
     
     asset = get_object_or_404(Asset, id=asset_id)
     risk_type = get_object_or_404(RiskType, id=risk_type_id)
@@ -281,29 +263,18 @@ def generate_risk_matrix(request):
             'description': assessment.risk_scenario.description
         })
     
-    return JsonResponse({
+    return Response({
         'success': True,
         'matrix': matrix
     })
 
-@login_required
-@csrf_exempt
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def save_step_data(request):
-    """Save risk matrix step data during the assessment workflow.
-    
-    Handles saving of:
-    - Vulnerability assessment answers
-    - Criticality assessment answers
-    - Barrier configurations
-    - Risk matrices
-    
-    Updates scores and triggers matrix generation after each step.
-    """
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid method'})
-    
+    """API endpoint to save risk matrix step data."""
     try:
-        data = json.loads(request.body)
+        data = request.data
         asset_id = data.get('asset_id')
         step = data.get('step')
         step_data = data.get('data', {})
@@ -344,6 +315,7 @@ def save_step_data(request):
             # Generate final risk matrices
             FinalRiskMatrix.generate_matrices(asset)
         
-        return JsonResponse({'success': True})
+        return Response({'success': True})
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        return Response({'success': False, 'error': str(e)}, status=400)
+

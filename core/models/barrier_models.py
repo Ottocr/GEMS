@@ -16,84 +16,68 @@ class BarrierCategory(models.Model):
     def __str__(self):
         return self.name
 
-class BarrierCharacteristic(models.Model):
-    """Defines specific characteristics that can be assessed for a barrier type"""
-    name = models.CharField(max_length=100)
-    category = models.ForeignKey(BarrierCategory, on_delete=models.CASCADE, related_name='characteristics')
-    description = models.TextField()
-    
-    # Example: For a fence - height, material, condition
-    possible_values = models.JSONField(
-        help_text="JSON array of possible values and their effectiveness scores"
-    )
-    
-    weight = models.FloatField(
-        validators=[MinValueValidator(0), MaxValueValidator(1)],
-        help_text="Weight of this characteristic in overall barrier effectiveness (0-1)"
-    )
-
-    def __str__(self):
-        return f"{self.category.name} - {self.name}"
-
 class Barrier(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
-    category = models.ForeignKey(BarrierCategory, on_delete=models.PROTECT)
+    category = models.ForeignKey(BarrierCategory, on_delete=models.PROTECT, related_name='category_barriers')
     performance_adjustment = models.FloatField(default=1.0)
     is_active = models.BooleanField(default=True)
     implementation_date = models.DateField(auto_now_add=True)
     last_assessment_date = models.DateField(auto_now=True)
+    risk_types = models.ManyToManyField('RiskType', related_name='barriers', blank=True,
+        help_text="Risk types this barrier affects. Can select multiple types.")
+    risk_subtypes = models.ManyToManyField('RiskSubtype', related_name='barriers', blank=True,
+        help_text="Risk subtypes this barrier affects. Can select multiple subtypes.")
 
     def __str__(self):
         return self.name
 
     @transaction.atomic
     def get_overall_effectiveness_score(self):
-        """Calculate overall effectiveness considering characteristics and performance"""
+        """Calculate overall effectiveness considering performance"""
         scores = self.effectiveness_scores.all()
         if not scores:
             return 0
             
-        # Get characteristic assessments
-        characteristic_scores = self.characteristic_assessments.all()
-        characteristic_adjustment = 1.0
-        
-        if characteristic_scores:
-            total_weight = sum(cs.characteristic.weight for cs in characteristic_scores)
-            if total_weight > 0:
-                weighted_score = sum(
-                    cs.score * (cs.characteristic.weight / total_weight)
-                    for cs in characteristic_scores
-                )
-                characteristic_adjustment = weighted_score / 10  # Normalize to 0-1 range
-
         base_score = mean([score.overall_effectiveness_score for score in scores])
-        return round(base_score * self.performance_adjustment * characteristic_adjustment, 2)
+        return round(base_score * self.performance_adjustment, 2)
 
     def get_risk_category_effectiveness_score(self, risk_type):
-        """Get effectiveness score for a specific risk type"""
-        scores = self.effectiveness_scores.filter(risk_type=risk_type)
+        """Get effectiveness score for a specific risk type, considering both direct and subtype associations"""
+        scores = []
+        
+        # Get scores for this risk type
+        if risk_type in self.risk_types.all():
+            type_scores = self.effectiveness_scores.filter(risk_type=risk_type, risk_subtype=None)
+            scores.extend([score.overall_effectiveness_score for score in type_scores])
+        
+        # Get scores for subtypes of this risk type
+        subtype_scores = self.effectiveness_scores.filter(
+            risk_type=risk_type,
+            risk_subtype__in=self.risk_subtypes.filter(risk_type=risk_type)
+        )
+        scores.extend([score.overall_effectiveness_score for score in subtype_scores])
+        
         if not scores:
             return 0
             
-        base_score = mean([score.overall_effectiveness_score for score in scores])
-        
-        # Apply scenario-specific adjustments
-        scenario_scores = self.scenario_effectiveness.filter(
-            scenario__risk_subtypes__risk_type=risk_type
-        )
-        if scenario_scores:
-            scenario_adjustment = mean([score.effectiveness_score for score in scenario_scores])
-            base_score *= scenario_adjustment
-
-        return round(base_score * self.performance_adjustment, 2)
+        # Return the maximum effectiveness score among all applicable scores
+        # This ensures we use the most effective barrier configuration for this risk
+        return round(max(scores) * self.performance_adjustment, 2)
 
     def get_effectiveness_scores_by_risk(self):
-        """Get effectiveness scores broken down by risk type"""
-        return {
-            score.risk_type.name: self.get_risk_category_effectiveness_score(score.risk_type)
-            for score in self.effectiveness_scores.all()
-        }
+        """Get effectiveness scores broken down by risk type and subtype"""
+        scores = {}
+        
+        # Get scores for all affected risk types
+        for risk_type in self.risk_types.all():
+            scores[risk_type.name] = self.get_risk_category_effectiveness_score(risk_type)
+        
+        # Get scores for all affected subtypes
+        for subtype in self.risk_subtypes.all():
+            scores[f"{subtype.risk_type.name} - {subtype.name}"] = self.get_risk_category_effectiveness_score(subtype.risk_type)
+        
+        return scores
 
     @transaction.atomic
     def adjust_performance(self, impact_rating):
@@ -120,21 +104,6 @@ class Barrier(models.Model):
             for asset in asset_link.assets.all():
                 asset.update_risk_assessment_based_on_link()
 
-class BarrierCharacteristicAssessment(models.Model):
-    """Assessment of a barrier's specific characteristics"""
-    barrier = models.ForeignKey(Barrier, on_delete=models.CASCADE, related_name='characteristic_assessments')
-    characteristic = models.ForeignKey(BarrierCharacteristic, on_delete=models.CASCADE)
-    selected_value = models.CharField(max_length=100)
-    score = models.IntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(10)],
-        help_text="Effectiveness score for this characteristic (1-10)"
-    )
-    notes = models.TextField(blank=True, null=True)
-    assessed_date = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ('barrier', 'characteristic')
-
 class BarrierScenarioEffectiveness(models.Model):
     """Effectiveness of a barrier in specific scenarios"""
     barrier = models.ForeignKey(Barrier, on_delete=models.CASCADE, related_name='scenario_effectiveness')
@@ -152,6 +121,10 @@ class BarrierScenarioEffectiveness(models.Model):
 class BarrierEffectivenessScore(models.Model):
     barrier = models.ForeignKey(Barrier, on_delete=models.CASCADE, related_name='effectiveness_scores')
     risk_type = models.ForeignKey('RiskType', on_delete=models.CASCADE, related_name='barrier_effectiveness_scores')
+    risk_subtype = models.ForeignKey('RiskSubtype', on_delete=models.CASCADE, 
+                                    related_name='barrier_effectiveness_scores',
+                                    null=True, blank=True,
+                                    help_text="Specific subtype this score applies to. Leave empty if score applies to entire risk type.")
     
     overall_effectiveness_score = models.FloatField(default=0)
     
@@ -177,6 +150,8 @@ class BarrierEffectivenessScore(models.Model):
     )
 
     def __str__(self):
+        if self.risk_subtype:
+            return f"{self.barrier.name} effectiveness against {self.risk_type.name} - {self.risk_subtype.name}"
         return f"{self.barrier.name} effectiveness against {self.risk_type.name}"
 
     def save(self, *args, **kwargs):
@@ -194,12 +169,15 @@ class BarrierEffectivenessScore(models.Model):
         )
 
     class Meta:
-        unique_together = ('barrier', 'risk_type')
+        unique_together = ('barrier', 'risk_type', 'risk_subtype')
 
 class BarrierQuestion(models.Model):
     barrier = models.ForeignKey(Barrier, on_delete=models.CASCADE, related_name='questions')
     question_text = models.TextField()
-    risk_type = models.ForeignKey('RiskType', on_delete=models.CASCADE, related_name='barrier_questions')
+    risk_types = models.ManyToManyField('RiskType', related_name='barrier_questions',
+        help_text="Risk types this question applies to. Can select multiple types.")
+    risk_subtypes = models.ManyToManyField('RiskSubtype', related_name='barrier_questions', blank=True,
+        help_text="Risk subtypes this question applies to. Can select multiple subtypes.")
     scenario = models.ForeignKey('Scenario', on_delete=models.CASCADE, null=True, blank=True)
     answer_choices = models.JSONField(
         help_text='Format: {"answers": [{"choice": "Yes", "impact": 1, "description": "Explanation"}]}'
