@@ -16,11 +16,12 @@ import {
   alpha
 } from '@mui/material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { setSelectedCountry } from '../../store/slices/riskManagementSlice';
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
   Security as SecurityIcon,
-  Business as BusinessIcon,
   Assessment as AssessmentIcon,
   Settings as SettingsIcon,
   ChevronLeft as ChevronLeftIcon,
@@ -31,7 +32,6 @@ const DRAWER_WIDTH = 240;
 const menuItems = [
   { path: '/', label: 'Dashboard', icon: DashboardIcon },
   { path: '/risk-management', label: 'Risk Management', icon: SecurityIcon },
-  { path: '/assets', label: 'Assets', icon: BusinessIcon },
   { path: '/reports', label: 'Reports', icon: AssessmentIcon },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -40,10 +40,18 @@ const MainLayout: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useDispatch();
   const [drawerOpen, setDrawerOpen] = useState(true);
 
   const handleDrawerToggle = () => {
     setDrawerOpen(!drawerOpen);
+  };
+
+  const handleNavigation = (path: string) => {
+    if (path === '/risk-management') {
+      dispatch(setSelectedCountry(null));
+    }
+    navigate(path);
   };
 
   return (
@@ -109,7 +117,7 @@ const MainLayout: React.FC = () => {
                     arrow
                   >
                     <ListItemButton
-                      onClick={() => navigate(item.path)}
+                      onClick={() => handleNavigation(item.path)}
                       selected={isSelected}
                       sx={{
                         minHeight: 48,

@@ -130,6 +130,7 @@ export interface RiskManagementState {
 
 export interface AssetState {
     currentAsset: Asset | null;
+    assets: Asset[];  // Added assets array
     barriers: Barrier[];
     riskMatrix: RiskMatrix[];
     vulnerabilityQuestions: any[];

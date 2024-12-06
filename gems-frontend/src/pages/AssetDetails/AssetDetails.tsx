@@ -67,7 +67,7 @@ const impactRatings = [
 const AssetDetails: React.FC = () => {
   const { assetId } = useParams<{ assetId: string }>();
   const dispatch = useAppDispatch();
-  const { currentAsset, barriers, riskMatrix, loading, error } = useAppSelector(
+  const { currentAsset, barriers = [], riskMatrix = [], loading, error } = useAppSelector(
     (state) => state.asset
   );
 
@@ -194,10 +194,12 @@ const AssetDetails: React.FC = () => {
               </Typography>
               <DataTable
                 columns={barrierColumns}
-                data={barriers}
+                data={barriers || []}
                 searchEnabled={false}
                 refreshEnabled={false}
                 onRowClick={handleReportIssue}
+                loading={loading}
+                error={error}
               />
             </Paper>
 
@@ -207,9 +209,11 @@ const AssetDetails: React.FC = () => {
               </Typography>
               <DataTable
                 columns={riskMatrixColumns}
-                data={riskMatrix}
+                data={riskMatrix || []}
                 searchEnabled={false}
                 refreshEnabled={false}
+                loading={loading}
+                error={error}
               />
             </Paper>
           </Grid>

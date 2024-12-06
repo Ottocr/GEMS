@@ -29,6 +29,7 @@ interface VulnerabilityAnswerRequest {
 
 const initialState: AssetState = {
   currentAsset: null,
+  assets: [],
   barriers: [],
   riskMatrix: [],
   vulnerabilityQuestions: [],
@@ -36,6 +37,18 @@ const initialState: AssetState = {
   loading: false,
   error: null,
 };
+
+export const fetchAssets = createAsyncThunk(
+  'asset/fetchAssets',
+  async () => {
+    const response = await axios.get<{ assets: AssetResponse[] }>('/api/assets/');
+    return response.data.assets.map(asset => ({
+      ...asset,
+      type: asset.asset_type,
+      riskScore: calculateAssetRiskScore(asset),
+    }));
+  }
+);
 
 export const fetchAssetDetails = createAsyncThunk(
   'asset/fetchDetails',
@@ -92,6 +105,7 @@ const assetSlice = createSlice({
   reducers: {
     clearAssetData: (state) => {
       state.currentAsset = null;
+      state.assets = [];
       state.barriers = [];
       state.riskMatrix = [];
       state.vulnerabilityQuestions = [];
@@ -100,6 +114,19 @@ const assetSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // Fetch Assets List
+      .addCase(fetchAssets.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchAssets.fulfilled, (state, action) => {
+        state.loading = false;
+        state.assets = action.payload;
+      })
+      .addCase(fetchAssets.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to fetch assets';
+      })
       // Fetch Asset Details
       .addCase(fetchAssetDetails.pending, (state) => {
         state.loading = true;

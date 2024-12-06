@@ -101,6 +101,7 @@ def get_dashboard_data(request):
             })
 
         asset_dict = {
+            'id': asset.id,  # Added the asset ID here
             'name': asset.name,
             'asset_type': asset.asset_type.name,
             'latitude': asset.latitude,
